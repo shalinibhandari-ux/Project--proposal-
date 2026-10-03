@@ -1,0 +1,91 @@
+class MinHeap {
+    constructor() {
+        this.heap = [];
+    }
+
+    insert(driver) {
+        this.heap.push(driver);
+        this.heapifyUp();
+    }
+
+    heapifyUp() {
+        let index = this.heap.length - 1;
+
+        while (index > 0) {
+            let parentIndex = Math.floor((index - 1) / 2);
+
+            if (this.heap[parentIndex].distance <= this.heap[index].distance) {
+                break;
+            }
+
+            [this.heap[parentIndex], this.heap[index]] =
+                [this.heap[index], this.heap[parentIndex]];
+
+            index = parentIndex;
+        }
+    }
+
+    extractMin() {
+        if (this.heap.length === 0) {
+            return null;
+        }
+
+        if (this.heap.length === 1) {
+            return this.heap.pop();
+        }
+
+        const minimum = this.heap[0];
+
+        this.heap[0] = this.heap.pop();
+
+        this.heapifyDown();
+
+        return minimum;
+    }
+
+    heapifyDown() {
+        let index = 0;
+
+        while (true) {
+            let left = 2 * index + 1;
+            let right = 2 * index + 2;
+            let smallest = index;
+
+            if (
+                left < this.heap.length &&
+                this.heap[left].distance < this.heap[smallest].distance
+            ) {
+                smallest = left;
+            }
+
+            if (
+                right < this.heap.length &&
+                this.heap[right].distance < this.heap[smallest].distance
+            ) {
+                smallest = right;
+            }
+
+            if (smallest === index) {
+                break;
+            }
+
+            [this.heap[index], this.heap[smallest]] =
+                [this.heap[smallest], this.heap[index]];
+
+            index = smallest;
+        }
+    }
+}
+
+
+
+const drivers = new MinHeap();
+
+drivers.insert({ name: "Driver A", distance: 5 });
+drivers.insert({ name: "Driver B", distance: 2 });
+drivers.insert({ name: "Driver C", distance: 8 });
+drivers.insert({ name: "Driver D", distance: 1 });
+
+console.log("Nearest Driver:");
+
+console.log(drivers.extractMin());

@@ -1,0 +1,168 @@
+// Haversine Distance Function
+
+function haversineDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) *
+        Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+}
+
+
+// Min-Heap
+
+class MinHeap {
+    constructor() {
+        this.heap = [];
+    }
+
+    insert(driver) {
+        this.heap.push(driver);
+        this.heapifyUp();
+    }
+
+    heapifyUp() {
+        let index = this.heap.length - 1;
+
+        while (index > 0) {
+            let parent = Math.floor((index - 1) / 2);
+
+            if (this.heap[parent].distance <= this.heap[index].distance) {
+                break;
+            }
+
+            [this.heap[parent], this.heap[index]] =
+                [this.heap[index], this.heap[parent]];
+
+            index = parent;
+        }
+    }
+
+    extractMin() {
+        if (this.heap.length === 0) {
+            return null;
+        }
+
+        if (this.heap.length === 1) {
+            return this.heap.pop();
+        }
+
+        const minimum = this.heap[0];
+
+        this.heap[0] = this.heap.pop();
+
+        this.heapifyDown();
+
+        return minimum;
+    }
+
+    heapifyDown() {
+        let index = 0;
+
+        while (true) {
+            let left = 2 * index + 1;
+            let right = 2 * index + 2;
+            let smallest = index;
+
+            if (
+                left < this.heap.length &&
+                this.heap[left].distance < this.heap[smallest].distance
+            ) {
+                smallest = left;
+            }
+
+            if (
+                right < this.heap.length &&
+                this.heap[right].distance < this.heap[smallest].distance
+            ) {
+                smallest = right;
+            }
+
+            if (smallest === index) {
+                break;
+            }
+
+            [this.heap[index], this.heap[smallest]] =
+                [this.heap[smallest], this.heap[index]];
+
+            index = smallest;
+        }
+    }
+}
+
+
+// User location
+
+const user = {
+    lat: 30.3165,
+    lon: 78.0322
+};
+
+
+// Drivers
+
+const drivers = [
+    {
+        name: "Driver A",
+        lat: 30.3250,
+        lon: 78.0400
+    },
+    {
+        name: "Driver B",
+        lat: 30.3100,
+        lon: 78.0250
+    },
+    {
+        name: "Driver C",
+        lat: 30.3300,
+        lon: 78.0500
+    },
+    {
+        name: "Driver D",
+        lat: 30.3180,
+        lon: 78.0340
+    }
+];
+
+
+// Create Min-Heap
+
+const driverHeap = new MinHeap();
+
+
+// Calculate distance and insert drivers
+
+for (let driver of drivers) {
+
+    driver.distance = haversineDistance(
+        user.lat,
+        user.lon,
+        driver.lat,
+        driver.lon
+    );
+
+    driverHeap.insert(driver);
+}
+
+
+// Find nearest driver
+
+const nearestDriver = driverHeap.extractMin();
+
+console.log("Nearest Driver:");
+console.log(nearestDriver.name);
+
+console.log(
+    "Distance:",
+    nearestDriver.distance.toFixed(2),
+    "km"
+);

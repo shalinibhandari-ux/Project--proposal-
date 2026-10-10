@@ -1,17 +1,23 @@
 {
-  "name": "rider-pwa--",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
   "dependencies": {
     "@protomaps/basemaps": "^5.7.2",
     "@tailwindcss/vite": "^4.3.3",
+    "express": "^5.2.1",
     "leaflet": "^1.9.4",
     "maplibre-gl": "^6.13.0",
     "pmtiles": "^4.5.0",

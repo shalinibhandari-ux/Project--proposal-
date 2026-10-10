@@ -1,10 +1,19 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.jsx'
 
-createRoot(document.getElementById('root')).render(
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { registerSW } from "virtual:pwa-register";
+
+import "leaflet/dist/leaflet.css";
+import "./index.css";
+import App from "./App.jsx";
+
+// Register PWA service worker
+registerSW({
+  immediate: true,
+});
+
+createRoot(document.getElementById("root")).render(
   <StrictMode>
     <App />
-  </StrictMode>,
-)
+  </StrictMode>
+);

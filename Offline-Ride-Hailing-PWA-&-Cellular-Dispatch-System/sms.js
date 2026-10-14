@@ -1,50 +1,37 @@
 const express = require("express");
-
 const router = express.Router();
-
 const OfflineSyncService = require("../service/OfflineSyncService");
-
 const syncService = new OfflineSyncService();
 
+router.post("/webhook", function (req, res) {
+    const payload = req.body.payload;
 
-// SMS webhook endpoint
-router.post("/webhook", (req, res) => {
-
-    const { payload } = req.body;
-
-    if (!payload) {
+    if (!payload || typeof payload !== "string") {
         return res.status(400).json({
             success: false,
-            message: "SMS payload is required"
+            message: "Valid SMS payload is required"
         });
     }
 
+    const decodedMessage = Buffer.from(payload, "base64").toString("utf8");
 
-    // Decode Base64 SMS payload
-    const decodedMessage = Buffer
-        .from(payload, "base64")
-        .toString("utf-8");
+    if (decodedMessage.length > 160) {
+        return res.status(400).json({
+            success: false,
+            message: "SMS length exceeds 160 characters"
+        });
+    }
 
-       syncService.addToQueue({
-    type: "SMS",
-    message: decodedMessage
-}); 
-
-        if (decodedMessage.length > 160) {
-    return res.status(400).json({
-        success: false,
-        message: "SMS length exceeds 160 characters"
+    syncService.addToQueue({
+        type: "SMS",
+        message: decodedMessage
     });
-}
 
-
-    res.json({
+    return res.json({
         success: true,
-        message: "SMS received and decoded",
+        message: "SMS received, decoded and added to offline queue",
         sms: decodedMessage
     });
-
 });
-
 
 module.exports = router;

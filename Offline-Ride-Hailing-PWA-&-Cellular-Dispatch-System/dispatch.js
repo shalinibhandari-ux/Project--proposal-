@@ -86,5 +86,9 @@ router.post("/rides", (req, res) => {
         nearbyDrivers
     });
 });
-
+// Offline Sync API
+router.post("/sync", (req, res) => {
+    const result = syncService.syncData();
+    return res.json(result);
+});
 module.exports = router;

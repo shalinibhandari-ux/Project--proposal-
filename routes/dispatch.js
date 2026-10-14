@@ -1,13 +1,13 @@
-const express = require("express");
+ const express = require("express");
 
 const router = express.Router();
+
 const DriverDispatchService = require("../service/DriverDispatchService");
-
-const dispatchService = new DriverDispatchService();
-
 const OfflineSyncService = require("../service/OfflineSyncService");
 
+const dispatchService = new DriverDispatchService();
 const syncService = new OfflineSyncService();
+
 
 // Test dispatch API
 router.get("/", (req, res) => {
@@ -17,21 +17,16 @@ router.get("/", (req, res) => {
     });
 });
 
-// Receive a ride request
-router.post("/rides", (req, res) => {
-    const { rideId, pickup, dropoff } = req.body;
 
-    if (!rideId || !pickup || !dropoff) {
-        return res.status(400).json({
-            success: false,
-            message: "rideId, pickup and dropoff are required"
-        });
-    }
-    // Add a driver
+// Register a driver
 router.post("/drivers", (req, res) => {
     const { driverId, latitude, longitude } = req.body;
 
-    if (!driverId || !latitude || !longitude) {
+    if (
+        driverId === undefined ||
+        latitude === undefined ||
+        longitude === undefined
+    ) {
         return res.status(400).json({
             success: false,
             message: "driverId, latitude and longitude are required"
@@ -55,6 +50,18 @@ router.post("/drivers", (req, res) => {
     });
 });
 
+
+// Receive a ride request
+router.post("/rides", (req, res) => {
+    const { rideId, pickup, dropoff } = req.body;
+
+    if (!rideId || !pickup || !dropoff) {
+        return res.status(400).json({
+            success: false,
+            message: "rideId, pickup and dropoff are required"
+        });
+    }
+
     const nearbyDrivers = dispatchService.findNearbyDrivers(
         pickup.latitude,
         pickup.longitude,
@@ -62,11 +69,11 @@ router.post("/drivers", (req, res) => {
     );
 
     syncService.addToQueue({
-    type: "RIDE_REQUEST",
-    rideId,
-    pickup,
-    dropoff
-});
+        type: "RIDE_REQUEST",
+        rideId,
+        pickup,
+        dropoff
+    });
 
     res.json({
         success: true,
@@ -79,5 +86,9 @@ router.post("/drivers", (req, res) => {
         nearbyDrivers
     });
 });
-
+// Offline Sync API
+router.post("/sync", (req, res) => {
+    const result = syncService.syncData();
+    return res.json(result);
+});
 module.exports = router;

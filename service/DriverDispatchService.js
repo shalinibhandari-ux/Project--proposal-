@@ -1,5 +1,4 @@
- const { Point, Boundary, QuadTree } = require("../../Project--proposal--main/Offline-Ride-Hailing-PWA-&-Cellular-Dispatch-System/RideSafety-DSA/algorithms/QuadTree");
-
+ const { Point, Boundary, QuadTree } = require("../Offline-Ride-Hailing-PWA-Cellular-Dispatch-System/RideSafety-DSA/algorithms/QuadTree");
 class DriverDispatchService {
     constructor() {
         this.drivers = new Map();
@@ -19,32 +18,36 @@ class DriverDispatchService {
         }
     }
 
-    addDriver(driverId, latitude, longitude) {
-        if (
-            !driverId ||
-            !Number.isFinite(latitude) ||
-            !Number.isFinite(longitude) ||
-            latitude < -90 ||
-            latitude > 90 ||
-            longitude < -180 ||
-            longitude > 180
-        ) {
-            return false;
-        }
+    addDriver(driverId, latitude, longitude, details = {}) {
 
-        const driver = {
-            driverId,
-            latitude,
-            longitude,
-            available: true
-        };
-
-        this.drivers.set(driverId, driver);
-        this.rebuildQuadTree();
-
-        return true;
+    if (
+        !driverId ||
+        !Number.isFinite(latitude) ||
+        !Number.isFinite(longitude) ||
+        latitude < -90 || latitude > 90 ||
+        longitude < -180 || longitude > 180
+    ) {
+        return false;
     }
 
+    const driver = {
+        driverId,
+        name: details.name || "Demo Driver",
+        phone: details.phone || "",
+        vehicleType: details.vehicleType || "",
+        vehicleNumber: details.vehicleNumber || "",
+        experience: details.experience || "",
+        latitude,
+        longitude,
+        available: true
+    };
+
+    this.drivers.set(driverId, driver);
+
+    this.rebuildQuadTree();
+
+    return true;
+} 
     updateDriverLocation(driverId, latitude, longitude) {
         const driver = this.drivers.get(driverId);
 

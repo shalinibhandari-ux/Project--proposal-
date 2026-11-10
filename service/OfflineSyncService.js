@@ -1,11 +1,10 @@
- 
-class OfflineSyncService {
+  class OfflineSyncService {
     constructor() {
         this.queue = [];
         this.nextId = 1;
     }
 
-    // Store data in the offline queue
+    // Add data to the queue
     addToQueue(data) {
         const item = {
             id: this.nextId++,
@@ -19,9 +18,11 @@ class OfflineSyncService {
         return item;
     }
 
-    // Get all pending data
+    // Get pending items
     getPendingData() {
-        return this.queue.filter(item => item.status === "QUEUED");
+        return this.queue.filter(
+            item => item.status === "QUEUED"
+        );
     }
 
     // Get complete queue
@@ -29,29 +30,32 @@ class OfflineSyncService {
         return this.queue;
     }
 
-    // Find an item by ID
+    // Find item by ID
     getById(id) {
-        return this.queue.find(item => item.id === Number(id));
+        return this.queue.find(
+            item => item.id === Number(id)
+        );
     }
 
-    // Mark an item as successfully synced
+    // Mark item as synchronized
     markAsSynced(id) {
         const item = this.getById(id);
 
-        if (!item) {
+        if (!item || item.status === "SENT") {
             return null;
         }
 
         item.status = "SENT";
         item.syncedAt = new Date().toISOString();
+
         return item;
     }
 
-    // Retry a queued item
+    // Retry a failed or queued item
     retryItem(id) {
         const item = this.getById(id);
 
-        if (!item) {
+        if (!item || item.status === "SENT") {
             return null;
         }
 
@@ -64,39 +68,40 @@ class OfflineSyncService {
 
     // Remove a specific item
     removeItem(id) {
-        const initialLength = this.queue.length;
+        const length = this.queue.length;
 
         this.queue = this.queue.filter(
             item => item.id !== Number(id)
         );
 
-        return this.queue.length < initialLength;
+        return this.queue.length < length;
     }
 
-    // Remove all successfully synced items
+    // Remove successfully synchronized items
     removeSyncedItems() {
-        const initialLength = this.queue.length;
+        const length = this.queue.length;
 
         this.queue = this.queue.filter(
             item => item.status !== "SENT"
         );
 
-        return initialLength - this.queue.length;
+        return length - this.queue.length;
     }
 
-    // Simulate syncing pending data
+    // Simulate synchronization
     syncData() {
         const pending = this.getPendingData();
 
         if (pending.length === 0) {
             return {
-                success: false,
+                success: true,
                 message: "No pending data to sync",
                 syncedItems: 0
             };
         }
 
         pending.forEach(item => {
+            item.attempts += 1;
             item.status = "SENT";
             item.syncedAt = new Date().toISOString();
         });
@@ -104,7 +109,11 @@ class OfflineSyncService {
         return {
             success: true,
             message: "Demo sync completed successfully",
-            syncedItems: pending.length
+            syncedItems: pending.length,
+            items: pending.map(item => ({
+                id: item.id,
+                status: item.status
+            }))
         };
     }
 }

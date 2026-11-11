@@ -98,8 +98,13 @@ router.post("/rides", async (req, res) => {
     try {
         await loadDrivers();
 
-        const { rideId, pickup, dropoff } = req.body;
+         const { rideId, pickup, dropoff } = req.body;
 
+const distanceKm = Number(req.body.distanceKm) || null;
+const fare = Number(req.body.fare) || null;
+const vehicleType = req.body.vehicleType || req.body.vehicle || null;
+console.log("RIDE DATA RECEIVED:", req.body);
+console.log("VALUES:", distanceKm, fare, vehicleType);
         if (
             !rideId ||
             !pickup ||
@@ -176,22 +181,25 @@ router.post("/rides", async (req, res) => {
         };
 
         // Save ride in SQLite
-        await dbRun(
-            `INSERT INTO rides
-            (ride_id, pickup_latitude, pickup_longitude,
-             dropoff_latitude, dropoff_longitude,
-             status, assigned_driver_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [
-                rideId,
-                pickupLat,
-                pickupLon,
-                dropoffLat,
-                dropoffLon,
-                ride.status,
-                ride.driverId
-            ]
-        );
+       await dbRun(
+    `INSERT INTO rides
+    (ride_id, pickup_latitude, pickup_longitude,
+     dropoff_latitude, dropoff_longitude,
+     status, assigned_driver_id, distance_km, fare, vehicle_type)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+        rideId,
+        pickupLat,
+        pickupLon,
+        dropoffLat,
+        dropoffLon,
+        ride.status,
+        ride.driverId,
+        distanceKm,
+        fare,
+        vehicleType
+    ]
+);  
 
         // Keep existing in-memory functionality
         rides.set(rideId, ride);
@@ -235,21 +243,24 @@ router.get("/rides/:rideId", async (req, res) => {
 
         const row = rows[0];
 
-        const ride = {
-            rideId: row.ride_id,
-            pickup: {
-                latitude: row.pickup_latitude,
-                longitude: row.pickup_longitude
-            },
-            dropoff: {
-                latitude: row.dropoff_latitude,
-                longitude: row.dropoff_longitude
-            },
-            driverId: row.assigned_driver_id,
-            status: row.status,
-            createdAt: row.created_at,
-            updatedAt: row.updated_at
-        };
+         const ride = {
+    rideId: row.ride_id,
+    pickup: {
+        latitude: row.pickup_latitude,
+        longitude: row.pickup_longitude
+    },
+    dropoff: {
+        latitude: row.dropoff_latitude,
+        longitude: row.dropoff_longitude
+    },
+    driverId: row.assigned_driver_id,
+    status: row.status,
+    distanceKm: row.distance_km,
+    fare: row.fare,
+    vehicleType: row.vehicle_type,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+};
 
         rides.set(ride.rideId, ride);
 

@@ -1,4 +1,4 @@
- const sqlite3 = require("sqlite3").verbose();
+  const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
 
 const databasePath = path.join(__dirname, "ride_safety.db");
@@ -31,9 +31,10 @@ const ready = new Promise((resolve, reject) => {
         `, (error) => {
             if (error) {
                 reject(error);
-            } else {
-                console.log("Drivers table is ready");
+                return;
             }
+
+            console.log("Drivers table is ready");
         });
 
         // Rides table
@@ -52,12 +53,66 @@ const ready = new Promise((resolve, reject) => {
         `, (error) => {
             if (error) {
                 reject(error);
-            } else {
-                console.log("Rides table is ready");
-                resolve();
+                return;
             }
-        });
 
+            console.log("Rides table is ready");
+
+            // Check existing columns
+            db.all("PRAGMA table_info(rides)", (error, columns) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+
+                const existingColumns = columns.map(column => column.name);
+
+                const newColumns = [
+                    {
+                        name: "distance_km",
+                        sql: "ALTER TABLE rides ADD COLUMN distance_km REAL"
+                    },
+                    {
+                        name: "fare",
+                        sql: "ALTER TABLE rides ADD COLUMN fare REAL"
+                    },
+                    {
+                        name: "vehicle_type",
+                        sql: "ALTER TABLE rides ADD COLUMN vehicle_type TEXT"
+                    }
+                ];
+
+                // Add only missing columns
+                const missingColumns = newColumns.filter(
+                    column => !existingColumns.includes(column.name)
+                );
+
+                let index = 0;
+
+                function addNextColumn() {
+                    if (index >= missingColumns.length) {
+                        console.log("Ride table migration completed");
+                        resolve();
+                        return;
+                    }
+
+                    const column = missingColumns[index];
+
+                    db.run(column.sql, (error) => {
+                        if (error) {
+                            reject(error);
+                            return;
+                        }
+
+                        console.log(`${column.name} column added`);
+                        index++;
+                        addNextColumn();
+                    });
+                }
+
+                addNextColumn();
+            });
+        });
     });
 });
 

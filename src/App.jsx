@@ -1,4 +1,4 @@
-  import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -30,6 +30,28 @@ const STORAGE_KEYS = {
   riderFeedback: "riderFeedback",
   driverFeedback: "driverFeedback",
 };
+
+const API_BASE = "http://localhost:3000/api/v1";
+
+async function apiRequest(endpoint, options = {}) {
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok || data.success === false) {
+    throw new Error(
+      data.message || `API request failed: ${response.status}`
+    );
+  }
+
+  return data;
+}
 
 function loadData(key, fallback = []) {
   try {
@@ -638,15 +660,23 @@ export default function App() {
     return rides.find((ride) => ride.id === acceptedRideId) || null;
   }, [rides, acceptedRideId]);
 
-  const driverRequests = useMemo(
-    () =>
-      rides.filter(
-        (ride) => ride.status === "Requested" && ride.vehicle === driverVehicle
-      ),
-    [rides, driverVehicle]
-  );
+  
+const driverRequests = useMemo(
+  () =>
+    rides.filter(
+      (ride) =>
+        ride.status === "Requested" &&
+        ride.vehicle === driverVehicle &&
+        (
+          !ride.backendSynced ||
+          String(ride.assignedDriverId) === String(phone)
+        )
+    ),
+  [rides, driverVehicle, phone]
+);
 
-  const fare = getVehicle(selectedVehicle).price;
+const fare = getVehicle(selectedVehicle).price;
+
 
   // NOTICE
 
@@ -662,7 +692,8 @@ export default function App() {
     setScreen("login");
   }
 
-  function startLogin(event) {
+  
+  async function startLogin(event) {
     event.preventDefault();
 
     if (!name.trim()) {
@@ -680,28 +711,88 @@ export default function App() {
         showNotice("Enter your vehicle registration number.");
         return;
       }
+
       if (!/^[0-9]{12}$/.test(driverAadhaar)) {
         showNotice("Enter a valid 12-digit demo Aadhaar number.");
         return;
       }
     }
 
-    const generatedOtp = createOtp();
-    setLoginOtp(generatedOtp);
-    setEnteredLoginOtp(generatedOtp);
-    setScreen("login-otp");
+    try {
+      const data = await apiRequest("/otp/send", {
+        method: "POST",
+        body: JSON.stringify({ userId: phone }),
+      });
+
+      if (!data.demoOTP) {
+        throw new Error("OTP was not returned by the backend.");
+      }
+
+      setLoginOtp(String(data.demoOTP));
+      setEnteredLoginOtp(String(data.demoOTP));
+      setScreen("login-otp");
+      showNotice("Demo OTP generated successfully.");
+    } catch (error) {
+      showNotice(error.message || "Could not generate OTP. Check backend.");
+    }
   }
 
-  function verifyLogin(event) {
+  
+  async function verifyLogin(event) {
     event.preventDefault();
-    if (enteredLoginOtp !== loginOtp) {
-      showNotice("Incorrect login OTP. Please try again.");
+
+    if (!/^[0-9]{6}$/.test(enteredLoginOtp)) {
+      showNotice("Enter the valid 6-digit login OTP.");
       return;
     }
-    setScreen("app");
-    setPage(role === "Rider" ? "book" : "requests");
-    showNotice(`Welcome, ${name}!`);
+
+    try {
+      await apiRequest("/otp/verify", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: String(phone),
+          otp: enteredLoginOtp,
+        }),
+      });
+
+      let registrationMessage = "";
+
+      if (role === "Driver") {
+        try {
+          await apiRequest("/dispatch/drivers", {
+            method: "POST",
+            body: JSON.stringify({
+              driverId: String(phone),
+              latitude: Number(driverLocation.lat),
+              longitude: Number(driverLocation.lng),
+              name,
+              phone,
+              vehicleType: driverVehicle,
+              vehicleNumber: driverVehicleNumber,
+              experience: driverExperience,
+            }),
+          });
+        } catch (error) {
+          registrationMessage =
+            " Driver registration failed: " + error.message;
+        }
+      }
+
+      setScreen("app");
+      setPage(role === "Rider" ? "book" : "requests");
+
+      showNotice(
+        registrationMessage
+          ? `Welcome, ${name}!${registrationMessage}`
+          : role === "Driver"
+            ? `Welcome, ${name}! Driver registered with backend.`
+            : `Welcome, ${name}!`
+      );
+    } catch (error) {
+      showNotice(error.message || "Incorrect or expired OTP.");
+    }
   }
+
 
   function logout() {
     setScreen("role");
@@ -769,7 +860,7 @@ export default function App() {
         showNotice("GPS location captured successfully.");
       },
       (error) => {
-        // FIX: अगर GPS फेल हो जाए (परमिशन न होने पर), तो डिफ़ॉल्ट पर अटकने के बजाय एक Mock (नया) लोकेशन बना दे।
+        // FIX:  
         showNotice("Real GPS unavailable. Using mock GPS location for demo.");
         const mockLat = DEFAULT_LOCATION.lat + (Math.random() - 0.5) * 0.01;
         const mockLng = DEFAULT_LOCATION.lng + (Math.random() - 0.5) * 0.01;
@@ -876,13 +967,55 @@ fare: calculatedFare,
     return ride;
   }
 
-  function bookRide() {
+    async function bookRide() {
     const ride = createRide();
     if (!ride) return;
-    setPage("tracking");
-    showNotice("Ride request saved on this device.");
-  }
 
+    if (ride.backendSynced) {
+      setPage("tracking");
+      showNotice("Ride request already sent to backend.");
+      return;
+    }
+
+    try {
+      const data = await apiRequest("/dispatch/rides", {
+        method: "POST",
+        body: JSON.stringify({
+          rideId: ride.id,
+          pickup: {
+            latitude: ride.pickup.lat,
+            longitude: ride.pickup.lng,
+          },
+          dropoff: {
+            latitude: ride.destination.lat,
+            longitude: ride.destination.lng,
+          },
+          distanceKm: ride.distanceKm,
+          fare: ride.fare,
+          vehicleType: ride.vehicle,
+        }),
+      });
+
+      const backendRide = data.ride || {};
+
+      updateRide(ride.id, {
+        backendSynced: true,
+        backendStatus: backendRide.status || "",
+        assignedDriverId:
+          backendRide.assigned_driver_id ||
+          backendRide.assignedDriverId ||
+          "",
+      });
+
+      setPage("tracking");
+      showNotice("Ride request successfully sent to backend.");
+    } catch (error) {
+      setPage("tracking");
+      showNotice(
+        "Ride saved on this device. Backend sync failed: " + error.message
+      );
+    }
+  }
   // --- NEW SMS SIMULATION FUNCTIONS ---
 
  // --- NEW SMS SIMULATION FUNCTIONS ---
@@ -909,14 +1042,12 @@ fare: calculatedFare,
     );
   }
   // --- UPDATED SMS FUNCTION (WITH OTP) ---
-  function sendRideSMS() {
+    async function sendRideSMS() {
     let ride = currentRide;
 
-    // Agar ride abhi book nahi hui hai, toh pehle create karein taaki OTP generate ho
     if (!ride) {
       ride = createRide();
-      // Agar location waghera fill nahi hai, toh wahi ruk jayega
-      if (!ride) return; 
+      if (!ride) return;
     }
 
     const message = [
@@ -930,74 +1061,141 @@ fare: calculatedFare,
       `Destination Coordinates: ${ride.destination.lat.toFixed(5)}, ${ride.destination.lng.toFixed(5)}`,
       `Vehicle: ${ride.vehicle}`,
       `Fare: Rs. ${ride.fare}`,
-      `Ride OTP: ${ride.otp}`, // <-- Yahan OTP add kar diya gaya hai!
+      `Ride OTP: ${ride.otp}`,
       "",
       "Please contact the rider to confirm this request."
     ].join("\n");
 
-    // SMS app open karega
+    let backendSMS = false;
+
+    try {
+      const backendMessage =
+        `Ride ${ride.id} ${ride.vehicle} Rs.${ride.fare} OTP:${ride.otp} Pickup:${ride.pickupText} Drop:${ride.destinationText}`.slice(0, 160);
+
+      await apiRequest("/sms/send", {
+        method: "POST",
+        body: JSON.stringify({
+          rideId: ride.id,
+          recipient: ride.riderPhone,
+          message: backendMessage,
+        }),
+      });
+
+      backendSMS = true;
+    } catch (error) {
+      console.error("Backend SMS error:", error);
+    }
+
     window.location.href = `sms:?body=${encodeURIComponent(message)}`;
-    
-    // Demo popup
-    showNotice("SMS request initiated. Waiting for dispatch response...");
+
+    showNotice(
+      backendSMS
+        ? "SMS added to backend queue. Your SMS app will also open."
+        : "Backend SMS unavailable. Your SMS app will still open."
+    );
+
     setTimeout(() => {
       simulateIncomingSMSResponse();
     }, 6000);
   }
   // DRIVER ACCEPT / REJECT
 
-  function acceptRide(ride) {
-    if (!online) {
-      showNotice(
-        "Accepting rides requires a shared connection. SMS can be used to contact the rider."
-      );
-      return;
-    }
-    if (ride.vehicle !== driverVehicle) {
-      showNotice("This request is for a different vehicle.");
-      return;
-    }
-    if (ride.status !== "Requested") {
-      showNotice("This ride is no longer available.");
-      return;
-    }
+    
+async function acceptRide(ride) {
+  if (!online) {
+    showNotice(
+      "Accepting rides requires a shared connection. SMS can be used to contact the rider."
+    );
+    return;
+  }
 
-    const updated = updateRide(ride.id, {
-      status: "Accepted",
-      driverName: name,
-      driverPhone: phone,
-      driverVehicle,
-      driverVehicleNumber,
-      driverExperience,
-      driverLocation: { ...driverLocation },
-      acceptedAt: new Date().toISOString(),
-    });
+  if (ride.vehicle !== driverVehicle) {
+    showNotice("This request is for a different vehicle.");
+    return;
+  }
 
-    if (updated) {
-      setAcceptedRideId(ride.id);
-      setDriverOtpInput("");
-      setPage("driver-ride");
-      showNotice("Ride accepted in this browser's local demo.");
+  if (ride.status !== "Requested") {
+    showNotice("This ride is no longer available.");
+    return;
+  }
+
+  if (ride.backendSynced) {
+    try {
+      await apiRequest(`/dispatch/rides/${ride.id}/respond`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          driverId: String(phone),
+          action: "accept",
+        }),
+      });
+    } catch (error) {
+      showNotice("Backend acceptance failed: " + error.message);
+      return;
     }
   }
 
-  function rejectRide(ride) {
-    if (!online) {
-      showNotice("Rejecting a shared ride requires a connection.");
+  const updated = updateRide(ride.id, {
+    status: "Accepted",
+    driverName: name,
+    driverPhone: phone,
+    driverVehicle,
+    driverVehicleNumber,
+    driverExperience,
+    driverLocation: { ...driverLocation },
+    acceptedAt: new Date().toISOString(),
+  });
+
+  if (updated) {
+    setAcceptedRideId(ride.id);
+    setDriverOtpInput("");
+    setPage("driver-ride");
+    showNotice(
+      ride.backendSynced
+        ? "Ride accepted through backend."
+        : "Ride accepted in this browser's local demo."
+    );
+  }
+}
+
+async function rejectRide(ride) {
+  if (!online) {
+    showNotice("Rejecting a shared ride requires a connection.");
+    return;
+  }
+
+  const reason =
+    window.prompt(
+      "Enter the reason for rejecting this ride (optional):",
+      "Unavailable"
+    ) || "Driver unavailable";
+
+  if (ride.backendSynced) {
+    try {
+      await apiRequest(`/dispatch/rides/${ride.id}/respond`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          driverId: String(phone),
+          action: "reject",
+        }),
+      });
+    } catch (error) {
+      showNotice("Backend rejection failed: " + error.message);
       return;
     }
-    const reason =
-      window.prompt(
-        "Enter the reason for rejecting this ride (optional):",
-        "Unavailable"
-      ) || "Driver unavailable";
-    updateRide(ride.id, {
-      status: "Rejected",
-      rejectedBy: name,
-      rejectionReason: reason,
-    });
-    showNotice("Ride marked as rejected.");
   }
+
+  updateRide(ride.id, {
+    status: "Rejected",
+    rejectedBy: name,
+    rejectionReason: reason,
+  });
+
+  showNotice(
+    ride.backendSynced
+      ? "Ride rejected through backend."
+      : "Ride marked as rejected in local demo."
+  );
+}
 
   // ARRIVAL BUTTONS
 
@@ -1091,34 +1289,77 @@ fare: calculatedFare,
 
   // DRIVER LOCATION / TRIP
 
-  function moveDriverLocation(ride) {
-    if (!ride?.destination || !ride?.pickup) {
-      showNotice("Ride coordinates are unavailable.");
-      return;
-    }
-    const current = ride.driverLocation || ride.pickup;
-    const next = {
-      lat: current.lat + (ride.destination.lat - current.lat) * 0.25,
-      lng: current.lng + (ride.destination.lng - current.lng) * 0.25,
-    };
-    setDriverLocation(next);
-    updateRide(ride.id, { driverLocation: next });
-    showNotice("Demo driver location updated.");
+  
+async function moveDriverLocation(ride) {
+  if (!ride?.destination || !ride?.pickup) {
+    showNotice("Ride coordinates are unavailable.");
+    return;
   }
 
-  function finishRide(ride) {
-    if (!ride || ride.status !== "In Progress") {
-      showNotice("Start the ride before completing it.");
-      return;
+  const current = ride.driverLocation || ride.pickup;
+
+  const next = {
+    lat: current.lat + (ride.destination.lat - current.lat) * 0.25,
+    lng: current.lng + (ride.destination.lng - current.lng) * 0.25,
+  };
+
+  setDriverLocation(next);
+  updateRide(ride.id, { driverLocation: next });
+
+  if (online) {
+    try {
+      await apiRequest(`/dispatch/drivers/${encodeURIComponent(String(phone))}/location`, {
+        method: "PUT",
+        body: JSON.stringify({
+          latitude: next.lat,
+          longitude: next.lng,
+        }),
+      });
+
+      showNotice("Demo driver location updated locally and through backend.");
+    } catch (error) {
+      showNotice("Local location updated. Backend update failed: " + error.message);
     }
-    updateRide(ride.id, {
-      status: "Completed",
-      completedAt: new Date().toISOString(),
-    });
+  } else {
+    showNotice("Demo driver location updated locally. Backend is offline.");
+  }
+}
+
+async function finishRide(ride) {
+  if (!ride || ride.status !== "In Progress") {
+    showNotice("Start the ride before completing it.");
+    return;
+  }
+
+  updateRide(ride.id, {
+    status: "Completed",
+    completedAt: new Date().toISOString(),
+  });
+
+  try {
+    if (online) {
+      await apiRequest(
+        `/dispatch/drivers/${encodeURIComponent(String(phone))}/availability`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ available: true }),
+        }
+      );
+    }
+
     setAcceptedRideId("");
     setPage("driver-feedback");
-    showNotice("Ride completed.");
+    showNotice(
+      online
+        ? "Ride completed. Driver availability restored through backend."
+        : "Ride completed in local demo."
+    );
+  } catch (error) {
+    setAcceptedRideId("");
+    setPage("driver-feedback");
+    showNotice("Ride completed locally. Availability update failed: " + error.message);
   }
+}
 
   // ---- FIX: Ride completed handler goes to feedback ----
   function riderFinishRide(ride) {
@@ -1134,20 +1375,42 @@ fare: calculatedFare,
     showNotice("Ride completed. Please submit feedback.");
   }
 
-  function cancelRide(ride) {
-    if (!ride) return;
-    if (["Completed", "Cancelled", "Rejected"].includes(ride.status)) {
-      showNotice("This ride cannot be cancelled now.");
-      return;
-    }
-    updateRide(ride.id, {
-      status: "Cancelled",
-      cancelledBy: role,
-      cancelledAt: new Date().toISOString(),
-    });
-    setAcceptedRideId("");
-    showNotice("Ride cancelled.");
+  
+async function cancelRide(ride) {
+  if (!ride) return;
+
+  if (["Completed", "Cancelled", "Rejected"].includes(ride.status)) {
+    showNotice("This ride cannot be cancelled now.");
+    return;
   }
+
+  updateRide(ride.id, {
+    status: "Cancelled",
+    cancelledBy: role,
+    cancelledAt: new Date().toISOString(),
+  });
+
+  setAcceptedRideId("");
+
+  if (role === "Driver" && online) {
+    try {
+      await apiRequest(
+        `/dispatch/drivers/${encodeURIComponent(String(phone))}/availability`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ available: true }),
+        }
+      );
+
+      showNotice("Ride cancelled. Driver availability restored through backend.");
+    } catch (error) {
+      showNotice("Ride cancelled locally. Availability update failed: " + error.message);
+    }
+    return;
+  }
+
+  showNotice("Ride cancelled.");
+}
 
   // SOS
 
@@ -1434,13 +1697,13 @@ fare: calculatedFare,
           <Field
             label="Login OTP"
             value={enteredLoginOtp}
-            onChange={(event) =>
+                        onChange={(event) =>
               setEnteredLoginOtp(
-                event.target.value.replace(/\D/g, "").slice(0, 4)
+                event.target.value.replace(/\D/g, "").slice(0, 6)
               )
             }
-            placeholder="Enter 4-digit OTP"
-            maxLength={4}
+            placeholder="Enter 6-digit OTP"
+            maxLength={6}
             required
           />
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+  import { useEffect, useMemo, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -530,6 +530,31 @@ async function searchLocation(query, bias = DEFAULT_LOCATION) {
 // MAIN APP
 // =====================================================
 
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) *
+    Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function calculateFare(distanceKm, vehicleName) {
+  const rates = {
+    Bike: 40,
+    Auto: 70,
+    "Mini Car": 100,
+    Sedan: 150
+  };
+
+  return Math.round(distanceKm * (rates[vehicleName] || 40));
+}
 export default function App() {
   const [screen, setScreen] = useState("role");
   const [role, setRole] = useState("Rider");
@@ -805,7 +830,17 @@ export default function App() {
     ) {
       return currentRide;
     }
+const distanceKm = calculateDistance(
+  pickup.lat,
+  pickup.lng,
+  destination.lat,
+  destination.lng
+);
 
+const calculatedFare = calculateFare(
+  distanceKm,
+  selectedVehicle
+);
     const ride = {
       id: createId(),
       riderName: name,
@@ -815,7 +850,8 @@ export default function App() {
       pickup: { ...pickup },
       destination: { ...destination },
       vehicle: selectedVehicle,
-      fare,
+distanceKm: Number(distanceKm.toFixed(2)),
+fare: calculatedFare, 
       otp: createOtp(),
       status: "Requested",
       driverName: "",
